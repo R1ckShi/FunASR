@@ -1,5 +1,5 @@
 import json
-from typing import Union, Dict
+from typing import Union, Dict, List
 from pathlib import Path
 
 import os
@@ -59,14 +59,22 @@ class ModelExport:
             model,
             self.export_config,
         )
-        model.eval()
-        # self._export_onnx(model, verbose, export_dir)
-        if self.onnx:
-            self._export_onnx(model, verbose, export_dir)
+        if isinstance(model, List):
+            for m in model:
+                m.eval()
+                if self.onnx:
+                    self._export_onnx(m, verbose, export_dir)
+                else:
+                    self._export_torchscripts(m, verbose, export_dir)
+                print("output dir: {}".format(export_dir))
         else:
-            self._export_torchscripts(model, verbose, export_dir)
-
-        print("output dir: {}".format(export_dir))
+            model.eval()
+            # self._export_onnx(model, verbose, export_dir)
+            if self.onnx:
+                self._export_onnx(model, verbose, export_dir)
+            else:
+                self._export_torchscripts(model, verbose, export_dir)
+            print("output dir: {}".format(export_dir))
 
 
     def _torch_quantize(self, model):
@@ -230,17 +238,17 @@ class ModelExport:
         # model_script = torch.jit.script(model)
         model_script = model #torch.jit.trace(model)
         model_path = os.path.join(path, f'{model.model_name}.onnx')
-        if not os.path.exists(model_path):
-            torch.onnx.export(
-                model_script,
-                dummy_input,
-                model_path,
-                verbose=verbose,
-                opset_version=14,
-                input_names=model.get_input_names(),
-                output_names=model.get_output_names(),
-                dynamic_axes=model.get_dynamic_axes()
-            )
+        # if not os.path.exists(model_path):
+        torch.onnx.export(
+            model_script,
+            dummy_input,
+            model_path,
+            verbose=verbose,
+            opset_version=14,
+            input_names=model.get_input_names(),
+            output_names=model.get_output_names(),
+            dynamic_axes=model.get_dynamic_axes()
+        )
 
         if self.quant:
             from onnxruntime.quantization import QuantType, quantize_dynamic
