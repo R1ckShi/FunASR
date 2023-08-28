@@ -465,8 +465,8 @@ class SeACoParaformer_decoder(nn.Module):
             token_num: torch.Tensor,
             cif_output: torch.Tensor,
             bias_embed: torch.Tensor,
-            lmbd: float = 1.0,
-            init_cache: torch.Tensor = None,
+            lmbd: torch.Tensor,
+            bias_length: torch.Tensor,
     ):
         decoder_out, decoder_hidden, _ = self.decoder(encoder_output, encoder_output_lengths, cif_output, token_num, return_hidden=True, return_both=True)
         decoder_out = torch.log_softmax(decoder_out, dim=-1)
@@ -475,7 +475,7 @@ class SeACoParaformer_decoder(nn.Module):
         _contextual_length = torch.ones(B) * N
         for dec in self.decoder2.model.decoders:
             dec.reserve_attn = True
-        _ = self.decoder2(bias_embed, _contextual_length, decoder_hidden, token_num)
+        _ = self.decoder2(bias_embed, bias_length, decoder_hidden, token_num)
         hotword_scores = self.decoder2.model.decoders[-1].attn_mat[0][0].sum(0).sum(0)
         dec_filter = torch.sort(hotword_scores, descending=True)[1][:51]
         contextual_info = bias_embed[:,dec_filter]
@@ -492,12 +492,15 @@ class SeACoParaformer_decoder(nn.Module):
         # merging logits
         dha_ids = dha_pred.max(-1)[-1]
         dha_mask = (dha_ids == self.NOBIAS).int().unsqueeze(-1)
+        lmbd = lmbd[0] # [batch_size]
         a = (1 - lmbd) / lmbd
         b = 1 / lmbd
         dha_mask = (dha_mask + a) / b 
         logits = decoder_out * dha_mask + dha_pred * (1-dha_mask)
         sampled_ids = logits.argmax(-1)
-        return sampled_ids, logits, token_num, dha_pred
+        #
+        token_num += 1
+        return sampled_ids, logits, token_num-1
 
     def get_dummy_inputs(self):
         B, T, D, L, N = 2, 30, 512, 8, 1
@@ -506,14 +509,15 @@ class SeACoParaformer_decoder(nn.Module):
         cif_output = torch.randn(B, L, D)
         bias_embed = torch.randn(B, N, D)
         token_num = torch.tensor([6, 8], dtype=torch.int32)
-        lmbd = torch.tensor([1.0],dtype=torch.float32)
-        return (encoder_output, encoder_output_lengths, token_num, cif_output, bias_embed, lmbd)
+        lmbd = torch.tensor([1.0]*B, dtype=torch.float32)
+        bias_length = torch.tensor([N]*B)
+        return (encoder_output, encoder_output_lengths, token_num, cif_output, bias_embed, lmbd, bias_length)
 
     def get_input_names(self):
-        return ['encoder_output', 'encoder_output_lengths', 'token_num', 'cif_output', 'bias_embed', 'lmbd']
+        return ['encoder_output', 'encoder_output_lengths', 'token_num', 'cif_output', 'bias_embed', 'lmbd', 'bias_length']
 
     def get_output_names(self):
-        return ['sampled_ids', 'logits', 'token_num', 'dha_pred']
+        return ['sampled_ids', 'logits', 'token_num']
 
     def get_dynamic_axes(self):
         return {
@@ -543,8 +547,10 @@ class SeACoParaformer_decoder(nn.Module):
                 0: 'batch_size',
                 1: 'output_length'
             },
-            'dha_pred': {
+            'lmbd': {
                 0: 'batch_size',
-                1: 'output_length',
+            },
+            'bias_length': {
+                0: 'batch_size'
             }
         }

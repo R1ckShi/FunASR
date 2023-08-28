@@ -2,7 +2,7 @@
 from funasr_onnx import SeACoParaformer2 as SeACoParaformer
 from pathlib import Path
 
-model_dir = "/Users/shixian/code/speech_seaco_paraformer"
+model_dir = "/Users/shixian/code/speech_seaco_paraformer2"
 model = SeACoParaformer(model_dir, batch_size=1)
 # model = Paraformer(model_dir, batch_size=1, device_id=0)  # gpu
 

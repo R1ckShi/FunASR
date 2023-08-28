@@ -443,10 +443,12 @@ class ContextualParaformer_v2(Paraformer):
             acoustic_embeds, fires = cif(enc_output, alphas, threshold=1.0)
             token_num = token_num.floor().type(torch.int32)
             # decoder forward
-            lmbd = np.array([1.0]).astype('float32')
-            outputs = self.dec_infer(enc_output.numpy(), feats_len+1, token_num.int().numpy(), acoustic_embeds.numpy(), bias_embed, lmbd)
-            sampled_ids, am_scores, valid_token_lens, dha_pred = outputs
+            lmbd = np.array([1.0]*self.batch_size).astype('float32')
+            bias_lenth = np.array([len(hotwords)]*self.batch_size)
             import pdb; pdb.set_trace()
+            outputs = self.dec_infer(enc_output.numpy(), feats_len+1, token_num.int().numpy(), acoustic_embeds.numpy(), bias_embed, lmbd, bias_lenth)
+            sampled_ids, am_scores, valid_token_lens = outputs
+            # import pdb; pdb.set_trace()
             # am_scores, valid_token_lens = outputs
             preds = self.decode(am_scores, valid_token_lens)
             for pred in preds:
@@ -487,8 +489,8 @@ class ContextualParaformer_v2(Paraformer):
         outputs = self.ort_infer_enc([feats, feats_len])
         return outputs
 
-    def dec_infer(self, encoder_output, encoder_output_length, token_num, cif_output, lmbd, init_cache=None):
-        outputs = self.ort_infer_dec([encoder_output, encoder_output_length, token_num, cif_output, lmbd, init_cache])
+    def dec_infer(self, encoder_output, encoder_output_length, token_num, cif_output, lmbd, bias_length, init_cache=None):
+        outputs = self.ort_infer_dec([encoder_output, encoder_output_length, token_num, cif_output, lmbd, bias_length, init_cache])
         return outputs
 
     def eb_infer(self, hotwords, hotwords_length):

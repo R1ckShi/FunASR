@@ -454,7 +454,7 @@ class SeACoParaformer(Paraformer): # decoder hotword augmented paraformer
             logging.warning("enable lstm bias decoder sampling and contextual training")
             self.bias_encoder = torch.nn.LSTM(self.inner_dim, 
                                               self.inner_dim, 
-                                              2, 
+                                              1, 
                                               batch_first=True, 
                                               dropout=bias_decoder_dropout,
                                               bidirectional=bias_bd_lstm)
