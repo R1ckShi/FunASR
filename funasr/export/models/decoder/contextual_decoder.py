@@ -1,13 +1,9 @@
 import os
-from typing import Tuple
-
 import torch
 import torch.nn as nn
 
-
 from funasr.export.utils.torch_function import MakePadMask
 from funasr.export.utils.torch_function import sequence_mask
-
 from funasr.modules.attention import MultiHeadedAttentionSANMDecoder
 from funasr.export.models.modules.multihead_att import MultiHeadedAttentionSANMDecoder as MultiHeadedAttentionSANMDecoder_export
 from funasr.modules.attention import MultiHeadedAttentionCrossAtt

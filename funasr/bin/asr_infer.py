@@ -23,7 +23,7 @@ import requests
 import torch
 from packaging.version import parse as V
 from funasr.build_utils.build_model_from_file import build_model_from_file
-from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer
+from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer, SeACoParaformer
 from funasr.models.e2e_asr_paraformer import BiCifParaformer, ContextualParaformer
 from funasr.models.frontend.wav_frontend import WavFrontend, WavFrontendOnline
 from funasr.modules.beam_search.beam_search import BeamSearch
@@ -441,21 +441,28 @@ class Speech2TextParaformer:
         pre_token_length = pre_token_length.round().long()
         if torch.max(pre_token_length) < 1:
             return []
-        if not isinstance(self.asr_model, ContextualParaformer) and \
-            not isinstance(self.asr_model, NeatContextualParaformer):
-            if self.hotword_list:
-                logging.warning("Hotword is given but asr model is not a ContextualParaformer.")
-            decoder_outs = self.asr_model.cal_decoder_with_predictor(enc, enc_len, pre_acoustic_embeds,
-                                                                     pre_token_length)
-            decoder_out, ys_pad_lens = decoder_outs[0], decoder_outs[1]
-        else:
+        if isinstance(self.asr_model, ContextualParaformer) or isinstance(self.asr_model, NeatContextualParaformer):
             decoder_outs = self.asr_model.cal_decoder_with_predictor(enc, 
                                                                      enc_len, 
                                                                      pre_acoustic_embeds,
                                                                      pre_token_length, 
                                                                      hw_list=self.hotword_list,
                                                                      clas_scale=self.clas_scale)
-            decoder_out, ys_pad_lens = decoder_outs[0], decoder_outs[1]
+        elif isinstance(self.asr_model, SeACoParaformer):
+            decoder_outs = self.asr_model.cal_decoder_with_ASF(enc, 
+                                                               enc_len, 
+                                                               pre_acoustic_embeds,
+                                                               pre_token_length, 
+                                                               hw_list=self.hotword_list,
+                                                               nfilter=50,
+                                                               lmbd=1.0
+                                                               )
+        else:
+            if self.hotword_list:
+                logging.warning("Hotword is given but asr model is not a ContextualParaformer.")
+            decoder_outs = self.asr_model.cal_decoder_with_predictor(enc, enc_len, pre_acoustic_embeds,
+                                                                     pre_token_length)
+        decoder_out, ys_pad_lens = decoder_outs[0], decoder_outs[1]
 
         if isinstance(self.asr_model, BiCifParaformer):
             _, _, us_alphas, us_peaks = self.asr_model.calc_predictor_timestamp(enc, enc_len,

@@ -41,7 +41,7 @@ from funasr.models.e2e_asr import ASRModel
 from funasr.models.decoder.rnnt_decoder import RNNTDecoder
 from funasr.models.joint_net.joint_network import JointNetwork
 from funasr.models.e2e_asr_paraformer import Paraformer, ParaformerOnline, ParaformerBert, BiCifParaformer, ContextualParaformer
-from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer
+from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer, SeACoParaformer
 from funasr.models.e2e_tp import TimestampPredictor
 from funasr.models.e2e_asr_mfcca import MFCCA
 from funasr.models.e2e_sa_asr import SAASRModel
@@ -131,6 +131,7 @@ model_choices = ClassChoices(
         paraformer_bert=ParaformerBert,
         bicif_paraformer=BiCifParaformer,
         contextual_paraformer=ContextualParaformer,
+        seaco_paraformer=SeACoParaformer,
         neatcontextual_paraformer=NeatContextualParaformer,
         mfcca=MFCCA,
         timestamp_prediction=TimestampPredictor,
@@ -1057,20 +1058,43 @@ class ASRTaskParaformer(ASRTask):
             model_class = model_choices.get_class(args.model)
         except AttributeError:
             model_class = model_choices.get_class("asr")
-        model = model_class(
-            vocab_size=vocab_size,
-            frontend=frontend,
-            specaug=specaug,
-            normalize=normalize,
-            preencoder=preencoder,
-            encoder=encoder,
-            postencoder=postencoder,
-            decoder=decoder,
-            ctc=ctc,
-            token_list=token_list,
-            predictor=predictor,
-            **args.model_conf,
-        )
+        if model_class == SeACoParaformer:
+            decoder_class2 = decoder_choices2.get_class(args.decoder2)
+            decoder2 = decoder_class2(
+                vocab_size=vocab_size,
+                encoder_output_size=encoder_output_size,
+                **args.decoder2_conf,
+            )
+            model = model_class(
+                vocab_size=vocab_size,
+                frontend=frontend,
+                specaug=specaug,
+                normalize=normalize,
+                preencoder=preencoder,
+                encoder=encoder,
+                postencoder=postencoder,
+                decoder=decoder,
+                ctc=ctc,
+                token_list=token_list,
+                predictor=predictor,
+                decoder2=decoder2,
+                **args.model_conf,
+            )
+        else:
+            model = model_class(
+                vocab_size=vocab_size,
+                frontend=frontend,
+                specaug=specaug,
+                normalize=normalize,
+                preencoder=preencoder,
+                encoder=encoder,
+                postencoder=postencoder,
+                decoder=decoder,
+                ctc=ctc,
+                token_list=token_list,
+                predictor=predictor,
+                **args.model_conf,
+            )
 
         # 11. Initialize
         if args.init is not None:

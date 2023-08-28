@@ -22,7 +22,7 @@ from funasr.models.decoder.transformer_decoder import TransformerDecoder
 from funasr.models.decoder.rnnt_decoder import RNNTDecoder
 from funasr.models.decoder.transformer_decoder import SAAsrTransformerDecoder
 from funasr.models.e2e_asr import ASRModel
-from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer
+from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer, SeACoParaformer
 from funasr.models.e2e_asr_mfcca import MFCCA
 
 from funasr.models.e2e_asr_transducer import TransducerModel, UnifiedTransducerModel
@@ -96,6 +96,7 @@ model_choices = ClassChoices(
         paraformer_bert=ParaformerBert,
         bicif_paraformer=BiCifParaformer,
         contextual_paraformer=ContextualParaformer,
+        seaco_paraformer=SeACoParaformer,
         neatcontextual_paraformer=NeatContextualParaformer,
         mfcca=MFCCA,
         timestamp_prediction=TimestampPredictor,
@@ -333,7 +334,6 @@ def build_asr_model(args):
     ctc = CTC(
         odim=vocab_size, encoder_output_size=encoder.output_size(), **args.ctc_conf
     )
-
     if args.model in ["asr", "mfcca"]:
         model_class = model_choices.get_class(args.model)
         model = model_class(
@@ -361,6 +361,31 @@ def build_asr_model(args):
             normalize=normalize,
             encoder=encoder,
             decoder=decoder,
+            ctc=ctc,
+            token_list=token_list,
+            predictor=predictor,
+            **args.model_conf,
+        )
+    elif args.model == "seaco_paraformer":
+        # predictor
+        predictor_class = predictor_choices.get_class(args.predictor)
+        predictor = predictor_class(**args.predictor_conf)
+        # decoder2
+        decoder_class2 = decoder_choices2.get_class(args.decoder2)
+        decoder2 = decoder_class2(
+            vocab_size=vocab_size,
+            encoder_output_size=encoder.output_size(),
+            **args.decoder2_conf,
+        )
+        model_class = model_choices.get_class(args.model)
+        model = model_class(
+            vocab_size=vocab_size,
+            frontend=frontend,
+            specaug=specaug,
+            normalize=normalize,
+            encoder=encoder,
+            decoder=decoder,
+            decoder2=decoder2,
             ctc=ctc,
             token_list=token_list,
             predictor=predictor,

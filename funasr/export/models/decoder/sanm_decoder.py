@@ -72,6 +72,8 @@ class ParaformerSANMDecoder(nn.Module):
         hlens: torch.Tensor,
         ys_in_pad: torch.Tensor,
         ys_in_lens: torch.Tensor,
+        return_hidden = False,
+        return_both = False,
     ):
 
         tgt = ys_in_pad
@@ -96,8 +98,13 @@ class ParaformerSANMDecoder(nn.Module):
             x, tgt_mask, memory, memory_mask
         )
         x = self.after_norm(x)
+        if return_both:
+            x_res = x
+            x = self.output_layer(x)
+            return x, x_res, ys_in_lens
+        if not self.output_layer:
+            return x, ys_in_lens
         x = self.output_layer(x)
-
         return x, ys_in_lens
 
 

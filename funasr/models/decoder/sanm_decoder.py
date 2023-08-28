@@ -64,6 +64,8 @@ class DecoderLayerSANM(nn.Module):
         if self.concat_after:
             self.concat_linear1 = nn.Linear(size + size, size)
             self.concat_linear2 = nn.Linear(size + size, size)
+        self.reserve_attn=False
+        self.attn_mat = []
 
     def forward(self, tgt, tgt_mask, memory, memory_mask=None, cache=None):
         """Compute decoded features.
@@ -100,8 +102,13 @@ class DecoderLayerSANM(nn.Module):
             residual = x
             if self.normalize_before:
                 x = self.norm3(x)
+            if self.reserve_attn:
+                x_src_attn, attn_mat = self.src_attn(x, memory, memory_mask, ret_attn=True)
+                self.attn_mat.append(attn_mat)
+            else:
+                x_src_attn = self.src_attn(x, memory, memory_mask, ret_attn=False)
 
-            x = residual + self.dropout(self.src_attn(x, memory, memory_mask))
+            x = residual + self.dropout(x_src_attn)
 
         return x, tgt_mask, memory, memory_mask, cache
 
@@ -810,7 +817,7 @@ class FsmnDecoderSCAMAOpt(BaseTransformerDecoder):
 
 class ParaformerSANMDecoder(BaseTransformerDecoder):
     """
-    Author: Speech Lab of DAMO Academy, Alibaba Group
+    author: Speech Lab, Alibaba Group, China
     Paraformer: Fast and Accurate Parallel Transformer for Non-autoregressive End-to-End Speech Recognition
     https://arxiv.org/abs/2006.01713
     """
@@ -835,6 +842,7 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
         sanm_shfit: int = 0,
         tf2torch_tensor_name_prefix_torch: str = "decoder",
         tf2torch_tensor_name_prefix_tf: str = "seq2seq/decoder",
+        wo_input_layer: bool = False,
     ):
         super().__init__(
             vocab_size=vocab_size,
@@ -848,22 +856,24 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
         )
 
         attention_dim = encoder_output_size
-
-        if input_layer == "embed":
-            self.embed = torch.nn.Sequential(
-                torch.nn.Embedding(vocab_size, attention_dim),
-                # pos_enc_class(attention_dim, positional_dropout_rate),
-            )
-        elif input_layer == "linear":
-            self.embed = torch.nn.Sequential(
-                torch.nn.Linear(vocab_size, attention_dim),
-                torch.nn.LayerNorm(attention_dim),
-                torch.nn.Dropout(dropout_rate),
-                torch.nn.ReLU(),
-                pos_enc_class(attention_dim, positional_dropout_rate),
-            )
+        if wo_input_layer:
+            self.embed = None
         else:
-            raise ValueError(f"only 'embed' or 'linear' is supported: {input_layer}")
+            if input_layer == "embed":
+                self.embed = torch.nn.Sequential(
+                    torch.nn.Embedding(vocab_size, attention_dim),
+                    # pos_enc_class(attention_dim, positional_dropout_rate),
+                )
+            elif input_layer == "linear":
+                self.embed = torch.nn.Sequential(
+                    torch.nn.Linear(vocab_size, attention_dim),
+                    torch.nn.LayerNorm(attention_dim),
+                    torch.nn.Dropout(dropout_rate),
+                    torch.nn.ReLU(),
+                    pos_enc_class(attention_dim, positional_dropout_rate),
+                )
+            else:
+                raise ValueError(f"only 'embed' or 'linear' is supported: {input_layer}")
 
         self.normalize_before = normalize_before
         if self.normalize_before:
@@ -932,7 +942,8 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
         hlens: torch.Tensor,
         ys_in_pad: torch.Tensor,
         ys_in_lens: torch.Tensor,
-        chunk_mask: torch.Tensor = None,
+        return_hidden: bool = False,
+        return_both: bool= False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward decoder.
 
@@ -953,13 +964,9 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
         """
         tgt = ys_in_pad
         tgt_mask = myutils.sequence_mask(ys_in_lens, device=tgt.device)[:, :, None]
-        
+
         memory = hs_pad
         memory_mask = myutils.sequence_mask(hlens, device=memory.device)[:, None, :]
-        if chunk_mask is not None:
-            memory_mask = memory_mask * chunk_mask
-            if tgt_mask.size(1) != memory_mask.size(1):
-                memory_mask = torch.cat((memory_mask, memory_mask[:, -2:-1, :]), dim=1)
 
         x = tgt
         x, tgt_mask, memory, memory_mask, _ = self.decoders(
@@ -973,12 +980,15 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
             x, tgt_mask, memory, memory_mask
         )
         if self.normalize_before:
-            x = self.after_norm(x)
-        if self.output_layer is not None:
-            x = self.output_layer(x)
-
+            hidden = self.after_norm(x)
         olens = tgt_mask.sum(1)
-        return x, olens
+        if self.output_layer is not None and return_hidden is False:
+            x = self.output_layer(hidden)
+            return x, olens
+        if return_both:
+            x = self.output_layer(hidden)
+            return x, hidden, olens
+        return hidden, olens
 
     def score(self, ys, state, x):
         """Score."""
@@ -987,65 +997,6 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
             ys.unsqueeze(0), ys_mask, x.unsqueeze(0), cache=state
         )
         return logp.squeeze(0), state
-
-    def forward_chunk(
-        self,
-        memory: torch.Tensor,
-        tgt: torch.Tensor,
-        cache: dict = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Forward decoder.
-
-        Args:
-            hs_pad: encoded memory, float32  (batch, maxlen_in, feat)
-            hlens: (batch)
-            ys_in_pad:
-                input token ids, int64 (batch, maxlen_out)
-                if input_layer == "embed"
-                input tensor (batch, maxlen_out, #mels) in the other cases
-            ys_in_lens: (batch)
-        Returns:
-            (tuple): tuple containing:
-
-            x: decoded token score before softmax (batch, maxlen_out, token)
-                if use_output_layer is True,
-            olens: (batch, )
-        """
-        x = tgt
-        if cache["decode_fsmn"] is None:
-            cache_layer_num = len(self.decoders)
-            if self.decoders2 is not None:
-                cache_layer_num += len(self.decoders2)
-            new_cache = [None] * cache_layer_num
-        else:
-            new_cache = cache["decode_fsmn"]
-        for i in range(self.att_layer_num):
-            decoder = self.decoders[i]
-            x, tgt_mask, memory, memory_mask, c_ret = decoder.forward_chunk(
-                x, None, memory, None, cache=new_cache[i]
-            )
-            new_cache[i] = c_ret
-
-        if self.num_blocks - self.att_layer_num > 1:
-            for i in range(self.num_blocks - self.att_layer_num):
-                j = i + self.att_layer_num
-                decoder = self.decoders2[i]
-                x, tgt_mask, memory, memory_mask, c_ret = decoder.forward_chunk(
-                    x, None, memory, None, cache=new_cache[j]
-                )
-                new_cache[j] = c_ret
-
-        for decoder in self.decoders3:
-
-            x, tgt_mask, memory, memory_mask, _ = decoder.forward_chunk(
-                x, None, memory, None, cache=None
-            )
-        if self.normalize_before:
-            x = self.after_norm(x)
-        if self.output_layer is not None:
-            x = self.output_layer(x)
-        cache["decode_fsmn"] = new_cache
-        return x
 
     def forward_one_step(
         self,
@@ -1078,7 +1029,7 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
         for i in range(self.att_layer_num):
             decoder = self.decoders[i]
             c = cache[i]
-            x, tgt_mask, memory, memory_mask, c_ret = decoder.forward_chunk(
+            x, tgt_mask, memory, memory_mask, c_ret = decoder(
                 x, tgt_mask, memory, None, cache=c
             )
             new_cache.append(c_ret)
@@ -1088,14 +1039,14 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
                 j = i + self.att_layer_num
                 decoder = self.decoders2[i]
                 c = cache[j]
-                x, tgt_mask, memory, memory_mask, c_ret = decoder.forward_chunk(
+                x, tgt_mask, memory, memory_mask, c_ret = decoder(
                     x, tgt_mask, memory, None, cache=c
                 )
                 new_cache.append(c_ret)
 
         for decoder in self.decoders3:
 
-            x, tgt_mask, memory, memory_mask, _ = decoder.forward_chunk(
+            x, tgt_mask, memory, memory_mask, _ = decoder(
                 x, tgt_mask, memory, None, cache=None
             )
 
@@ -1317,6 +1268,55 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
                  "squeeze": [None, None],
                  "transpose": [None, None],
                  },  # (4235,),(4235,)
+
+            ## clas decoder
+            # src att
+            "{}.bias_decoder.norm3.weight".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/LayerNorm/gamma".format(tensor_name_prefix_tf),
+                 "squeeze": None,
+                 "transpose": None,
+                 },  # (256,),(256,)
+            "{}.bias_decoder.norm3.bias".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/LayerNorm/beta".format(tensor_name_prefix_tf),
+                 "squeeze": None,
+                 "transpose": None,
+                 },  # (256,),(256,)
+            "{}.bias_decoder.src_attn.linear_q.weight".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/conv1d/kernel".format(tensor_name_prefix_tf),
+                 "squeeze": 0,
+                 "transpose": (1, 0),
+                 },  # (256,256),(1,256,256)
+            "{}.bias_decoder.src_attn.linear_q.bias".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/conv1d/bias".format(tensor_name_prefix_tf),
+                 "squeeze": None,
+                 "transpose": None,
+                 },  # (256,),(256,)
+            "{}.bias_decoder.src_attn.linear_k_v.weight".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/conv1d_1/kernel".format(tensor_name_prefix_tf),
+                 "squeeze": 0,
+                 "transpose": (1, 0),
+                 },  # (1024,256),(1,256,1024)
+            "{}.bias_decoder.src_attn.linear_k_v.bias".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/conv1d_1/bias".format(tensor_name_prefix_tf),
+                 "squeeze": None,
+                 "transpose": None,
+                 },  # (1024,),(1024,)
+            "{}.bias_decoder.src_attn.linear_out.weight".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/conv1d_2/kernel".format(tensor_name_prefix_tf),
+                 "squeeze": 0,
+                 "transpose": (1, 0),
+                 },  # (256,256),(1,256,256)
+            "{}.bias_decoder.src_attn.linear_out.bias".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/multi_head_1/conv1d_2/bias".format(tensor_name_prefix_tf),
+                 "squeeze": None,
+                 "transpose": None,
+                 },  # (256,),(256,)
+            # dnn
+            "{}.bias_output.weight".format(tensor_name_prefix_torch):
+                {"name": "{}/decoder_fsmn_layer_15/conv1d/kernel".format(tensor_name_prefix_tf),
+                 "squeeze": None,
+                 "transpose": (2, 1, 0),
+                 },  # (1024,256),(1,256,1024)
         
         }
         return map_dict_local
@@ -1407,8 +1407,29 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
                         logging.info(
                             "torch tensor: {}, {}, loading from tf tensor: {}, {}".format(name, data_tf.size(), name_v,
                                                                                           var_dict_tf[name_tf].shape))
-            
-                elif names[1] == "embed" or names[1] == "output_layer":
+                elif names[1] == "bias_decoder":
+                    name_q = name
+
+                    if name_q in map_dict.keys():
+                        name_v = map_dict[name_q]["name"]
+                        name_tf = name_v
+                        data_tf = var_dict_tf[name_tf]
+                        if map_dict[name_q]["squeeze"] is not None:
+                            data_tf = np.squeeze(data_tf, axis=map_dict[name_q]["squeeze"])
+                        if map_dict[name_q]["transpose"] is not None:
+                            data_tf = np.transpose(data_tf, map_dict[name_q]["transpose"])
+                        data_tf = torch.from_numpy(data_tf).type(torch.float32).to("cpu")
+                        assert var_dict_torch[name].size() == data_tf.size(), "{}, {}, {} != {}".format(name, name_tf,
+                                                                                                        var_dict_torch[
+                                                                                                            name].size(),
+                                                                                                        data_tf.size())
+                        var_dict_torch_update[name] = data_tf
+                        logging.info(
+                            "torch tensor: {}, {}, loading from tf tensor: {}, {}".format(name, data_tf.size(), name_v,
+                                                                                          var_dict_tf[name_tf].shape))
+           
+ 
+                elif names[1] == "embed" or names[1] == "output_layer" or names[1] == "bias_output":
                     name_tf = map_dict[name]["name"]
                     if isinstance(name_tf, list):
                         idx_list = 0
