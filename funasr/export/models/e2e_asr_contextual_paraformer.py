@@ -142,6 +142,7 @@ class ContextualParaformer_embedder(nn.Module):
     def forward(self, hotword):
         hotword = self.embedding(hotword).transpose(0, 1) # batch second
         hw_embed, (_, _) = self.bias_encoder(hotword)
+        import pdb; pdb.set_trace()
         return hw_embed
     
     def get_dummy_inputs(self):
@@ -510,7 +511,7 @@ class SeACoParaformer_decoder(nn.Module):
         bias_embed = torch.randn(B, N, D)
         token_num = torch.tensor([6, 8], dtype=torch.int32)
         lmbd = torch.tensor([1.0]*B, dtype=torch.float32)
-        bias_length = torch.tensor([N]*B)
+        bias_length = torch.tensor([N]*B, dtype=torch.int32)
         return (encoder_output, encoder_output_lengths, token_num, cif_output, bias_embed, lmbd, bias_length)
 
     def get_input_names(self):

@@ -274,8 +274,7 @@ class ContextualParaformer(Paraformer):
                  **kwargs) -> List:
         # make hotword list
         hotwords, hotwords_length = self.proc_hotword(hotwords)
-        # import pdb; pdb.set_trace()
-        [bias_embed] = self.eb_infer(hotwords, hotwords_length)
+        [bias_embed] = self.eb_infer(hotwords)
         # index from bias_embed
         bias_embed = bias_embed.transpose(1, 0, 2)
         _ind = np.arange(0, len(hotwords)).tolist()
@@ -311,7 +310,6 @@ class ContextualParaformer(Paraformer):
         def word_map(word):
             return torch.tensor([self.vocab[i] for i in word])
         hotword_int = [word_map(i) for i in hotwords]
-        # import pdb; pdb.set_trace()
         hotword_int.append(torch.tensor([1]))
         hotwords = pad_list(hotword_int, pad_value=0, max_len=10)
         return hotwords, hotwords_length
@@ -321,8 +319,8 @@ class ContextualParaformer(Paraformer):
         outputs = self.ort_infer_bb([feats, feats_len, bias_embed])
         return outputs
 
-    def eb_infer(self, hotwords, hotwords_length):
-        outputs = self.ort_infer_eb([hotwords.to(torch.int32).numpy(), hotwords_length.to(torch.int32).numpy()])
+    def eb_infer(self, hotwords):
+        outputs = self.ort_infer_eb([hotwords.to(torch.int32).numpy()])
         return outputs
 
     def decode(self, am_scores: np.ndarray, token_nums: int) -> List[str]:
@@ -419,7 +417,6 @@ class ContextualParaformer_v2(Paraformer):
                  **kwargs) -> List:
         # make hotword list
         hotwords, hotwords_length = self.proc_hotword(hotwords)
-        # import pdb; pdb.set_trace()
         [bias_embed] = self.eb_infer(hotwords, hotwords_length)
         # index from bias_embed
         bias_embed = bias_embed.transpose(1, 0, 2)
@@ -444,11 +441,9 @@ class ContextualParaformer_v2(Paraformer):
             token_num = token_num.floor().type(torch.int32)
             # decoder forward
             lmbd = np.array([1.0]*self.batch_size).astype('float32')
-            bias_lenth = np.array([len(hotwords)]*self.batch_size)
-            import pdb; pdb.set_trace()
+            bias_lenth = np.array([len(hotwords)]*self.batch_size).astype("int32")
             outputs = self.dec_infer(enc_output.numpy(), feats_len+1, token_num.int().numpy(), acoustic_embeds.numpy(), bias_embed, lmbd, bias_lenth)
             sampled_ids, am_scores, valid_token_lens = outputs
-            # import pdb; pdb.set_trace()
             # am_scores, valid_token_lens = outputs
             preds = self.decode(am_scores, valid_token_lens)
             for pred in preds:
@@ -479,7 +474,6 @@ class ContextualParaformer_v2(Paraformer):
         def word_map(word):
             return torch.tensor([self.vocab[i] for i in word])
         hotword_int = [word_map(i) for i in hotwords]
-        # import pdb; pdb.set_trace()
         hotword_int.append(torch.tensor([1]))
         hotwords = pad_list(hotword_int, pad_value=0, max_len=10)
         return hotwords, hotwords_length
