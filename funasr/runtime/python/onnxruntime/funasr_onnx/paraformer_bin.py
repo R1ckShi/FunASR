@@ -438,13 +438,20 @@ class ContextualParaformer_v2(Paraformer):
             token_num = alphas.sum(-1)
             enc_output, alphas, token_num = tail_process_fn(enc_output, torch.tensor(alphas), mask=mask)
             acoustic_embeds, fires = cif(enc_output, alphas, threshold=1.0)
-            import pdb; pdb.set_trace()
             token_num = token_num.floor().type(torch.int32)
             # decoder forward
             lmbd = np.array([1.0]*self.batch_size).astype('float32')
             bias_lenth = np.array([len(hotwords)]*self.batch_size).astype("int32")
             outputs = self.dec_infer(enc_output.numpy(), feats_len+1, token_num.int().numpy(), acoustic_embeds.numpy(), bias_embed, lmbd, bias_lenth)
             sampled_ids, am_scores, valid_token_lens = outputs
+            tensor_list = [feats, enc_output.numpy(), alphas.numpy(), acoustic_embeds.numpy(), bias_embed, lmbd, bias_lenth, am_scores]
+            tensor_name_list = ['feats', 'enc_output', 'alphas', 'acoustic_embeds', 'bias_embed', 'lmbd', 'bias_lenth', 'am_scores']
+            for tensor, name in zip(tensor_list, tensor_name_list):
+                print(tensor.shape, name)
+                with open("debug/{}.txt".format(name), 'w') as f:
+                    for t in tensor.ravel():
+                        f.write("{}\n".format(t))
+            import pdb; pdb.set_trace()
             # am_scores, valid_token_lens = outputs
             preds = self.decode(am_scores, valid_token_lens)
             for pred in preds:

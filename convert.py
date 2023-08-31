@@ -185,7 +185,7 @@ def _write_lstm_bias(f, var_dict, layer_name, sub_layer_name, is_bin=False):
     tensor_var[1, :] = np.copy(tensor_var_ori[0, :])
     bf = tensor_var.reshape([col]) # 1280
     # torch lstm bias
-
+    bs = torch_lstm_bias
     _write_matrix(f, bf, is_bin=is_bin, t=True)
 
 def _write_matrix(f, tensor_var, is_bin=False, t=True):
