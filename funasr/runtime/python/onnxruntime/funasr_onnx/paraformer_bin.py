@@ -438,6 +438,7 @@ class ContextualParaformer_v2(Paraformer):
             token_num = alphas.sum(-1)
             enc_output, alphas, token_num = tail_process_fn(enc_output, torch.tensor(alphas), mask=mask)
             acoustic_embeds, fires = cif(enc_output, alphas, threshold=1.0)
+            import pdb; pdb.set_trace()
             token_num = token_num.floor().type(torch.int32)
             # decoder forward
             lmbd = np.array([1.0]*self.batch_size).astype('float32')

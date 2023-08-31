@@ -454,7 +454,7 @@ class SeACoParaformer(Paraformer): # decoder hotword augmented paraformer
             logging.warning("enable lstm bias decoder sampling and contextual training")
             self.bias_encoder = torch.nn.LSTM(self.inner_dim, 
                                               self.inner_dim, 
-                                              1, 
+                                              2, 
                                               batch_first=True, 
                                               dropout=bias_decoder_dropout,
                                               bidirectional=bias_bd_lstm)
@@ -478,7 +478,7 @@ class SeACoParaformer(Paraformer): # decoder hotword augmented paraformer
             normalize_length=length_normalized_loss,
         )
         self.decoder2 = decoder2
-        self.hotword_output_layer = torch.nn.Linear(self.inner_dim, vocab_size)
+        self.hotword_output_layer = torch.nn.Linear(self.inner_dim, 8404)#vocab_size)# 8404)#vocab_size)
         self.phone_embedding = phone_embedding
         self.NOBIAS = no_bias
         self._unique_components()    

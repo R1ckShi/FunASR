@@ -497,7 +497,7 @@ class SeACoParaformer_decoder(nn.Module):
         a = (1 - lmbd) / lmbd
         b = 1 / lmbd
         dha_mask = (dha_mask + a) / b 
-        logits = decoder_out * dha_mask + dha_pred * (1-dha_mask)
+        logits = decoder_out#  * dha_mask + dha_pred * (1-dha_mask)
         sampled_ids = logits.argmax(-1)
         #
         token_num += 1
