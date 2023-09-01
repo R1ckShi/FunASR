@@ -9,6 +9,7 @@ from funasr.export.utils.torch_function import sequence_mask
 from funasr.models.encoder.sanm_encoder import SANMEncoder, SANMEncoderChunkOpt
 from funasr.models.encoder.conformer_encoder import ConformerEncoder
 from funasr.export.models.encoder.sanm_encoder import SANMEncoder as SANMEncoder_export
+from funasr.export.models.encoder.sanm_encoder import SANMEncoderChunkOpt as SANMEncoderChunkOpt_export
 from funasr.export.models.encoder.conformer_encoder import ConformerEncoder as ConformerEncoder_export
 from funasr.models.predictor.cif import CifPredictorV2
 from funasr.export.models.predictor.cif import CifPredictorV2 as CifPredictorV2_export
@@ -364,8 +365,10 @@ class SeACoParaformer_encoder(nn.Module):
         onnx = False
         if "onnx" in kwargs:
             onnx = kwargs["onnx"]
-        if isinstance(model.encoder, SANMEncoder) or isinstance(model.encoder, SANMEncoderChunkOpt):
-            self.encoder = SANMEncoder_export(model.encoder, onnx=onnx)
+        if isinstance(model.encoder, SANMEncoder):
+            self.encoder = SANMEncoderChunkOpt_export(model.encoder, onnx=onnx)# SANMEncoder_export(model.encoder, onnx=onnx)
+        elif isinstance(model.encoder, SANMEncoderChunkOpt):
+            self.encoder = SANMEncoderChunkOpt_export(model.encoder, onnx=onnx)
         elif isinstance(model.encoder, ConformerEncoder):
             self.encoder = ConformerEncoder_export(model.encoder, onnx=onnx)
         if isinstance(model.predictor, CifPredictorV2):
@@ -472,34 +475,28 @@ class SeACoParaformer_decoder(nn.Module):
         decoder_out, decoder_hidden, _ = self.decoder(encoder_output, encoder_output_lengths, cif_output, token_num, return_hidden=True, return_both=True)
         decoder_out = torch.log_softmax(decoder_out, dim=-1)
         # sac forward
-        B, N, D = bias_embed.shape
-        _contextual_length = torch.ones(B) * N
         for dec in self.decoder2.model.decoders:
             dec.reserve_attn = True
         _ = self.decoder2(bias_embed, bias_length, decoder_hidden, token_num)
         hotword_scores = self.decoder2.model.decoders[-1].attn_mat[0][0].sum(0).sum(0)
         dec_filter = torch.sort(hotword_scores, descending=True)[1][:51]
         contextual_info = bias_embed[:,dec_filter]
-        num_hot_word = contextual_info.shape[1]
-        _contextual_length = torch.Tensor([num_hot_word]).int().repeat(B).to(encoder_output.device)
         for dec in self.decoder2.model.decoders:
             dec.attn_mat = []
             dec.reserve_attn = False
-        cif_attended, _ = self.decoder2(contextual_info, _contextual_length, cif_output, token_num)
-        dec_attended, _ = self.decoder2(contextual_info, _contextual_length, decoder_hidden, token_num)
+        cif_attended, _ = self.decoder2(contextual_info, bias_length, cif_output, token_num)
+        dec_attended, _ = self.decoder2(contextual_info, bias_length, decoder_hidden, token_num)
         merged = cif_attended + dec_attended
         dha_output = self.hotword_output_layer(merged)
         dha_pred = torch.log_softmax(dha_output, dim=-1)
         # merging logits
         dha_ids = dha_pred.max(-1)[-1]
         dha_mask = (dha_ids == self.NOBIAS).int().unsqueeze(-1)
-        lmbd = lmbd[0] # [batch_size]
         a = (1 - lmbd) / lmbd
         b = 1 / lmbd
-        dha_mask = (dha_mask + a) / b 
-        logits = decoder_out#  * dha_mask + dha_pred * (1-dha_mask)
+        dha_mask = (dha_mask + a.reshape(-1, 1, 1)) / b.reshape(-1, 1, 1)
+        logits = decoder_out * dha_mask + dha_pred * (1-dha_mask)
         sampled_ids = logits.argmax(-1)
-        #
         token_num += 1
         return sampled_ids, logits, token_num-1
 
@@ -510,7 +507,7 @@ class SeACoParaformer_decoder(nn.Module):
         cif_output = torch.randn(B, L, D)
         bias_embed = torch.randn(B, N, D)
         token_num = torch.tensor([6, 8], dtype=torch.int32)
-        lmbd = torch.tensor([1.0]*B, dtype=torch.float32)
+        lmbd = torch.tensor([0.65, 1.0], dtype=torch.float32)
         bias_length = torch.tensor([N]*B, dtype=torch.int32)
         return (encoder_output, encoder_output_lengths, token_num, cif_output, bias_embed, lmbd, bias_length)
 

@@ -7,7 +7,7 @@ param_dict['hotword'] = '一流讲师 万达理想汽车 世博 世间 东江 �
 
 inference_pipeline = pipeline(
     task=Tasks.auto_speech_recognition,
-    model="/Users/shixian/code/speech_seaco_paraformer2",
+    model="/Users/shixian/code/speech_seaco_paraformer",
     param_dict=param_dict)
 
 rec_result = inference_pipeline(audio_in='/Users/shixian/Downloads/sac_test.wav')
