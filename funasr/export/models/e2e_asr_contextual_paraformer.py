@@ -481,11 +481,13 @@ class SeACoParaformer_decoder(nn.Module):
         hotword_scores = self.decoder2.model.decoders[-1].attn_mat[0][0].sum(0).sum(0)
         dec_filter = torch.sort(hotword_scores, descending=True)[1][:51]
         contextual_info = bias_embed[:,dec_filter]
+        num_hot_word = contextual_info.shape[1]
+        _contextual_length = torch.Tensor([num_hot_word]).int().repeat(encoder_output.shape[0]).to(encoder_output.device)
         for dec in self.decoder2.model.decoders:
             dec.attn_mat = []
             dec.reserve_attn = False
-        cif_attended, _ = self.decoder2(contextual_info, bias_length, cif_output, token_num)
-        dec_attended, _ = self.decoder2(contextual_info, bias_length, decoder_hidden, token_num)
+        cif_attended, _ = self.decoder2(contextual_info, _contextual_length, cif_output, token_num)
+        dec_attended, _ = self.decoder2(contextual_info, _contextual_length, decoder_hidden, token_num)
         merged = cif_attended + dec_attended
         dha_output = self.hotword_output_layer(merged)
         dha_pred = torch.log_softmax(dha_output, dim=-1)

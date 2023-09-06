@@ -41,7 +41,7 @@ from funasr.models.e2e_asr import ASRModel
 from funasr.models.decoder.rnnt_decoder import RNNTDecoder
 from funasr.models.joint_net.joint_network import JointNetwork
 from funasr.models.e2e_asr_paraformer import Paraformer, ParaformerOnline, ParaformerBert, BiCifParaformer, ContextualParaformer
-from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer, SeACoParaformer
+from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer, SeACoParaformer, SeACoParaformer_v4
 from funasr.models.e2e_tp import TimestampPredictor
 from funasr.models.e2e_asr_mfcca import MFCCA
 from funasr.models.e2e_sa_asr import SAASRModel
@@ -132,6 +132,7 @@ model_choices = ClassChoices(
         bicif_paraformer=BiCifParaformer,
         contextual_paraformer=ContextualParaformer,
         seaco_paraformer=SeACoParaformer,
+        seaco_paraformerv4=SeACoParaformer_v4,
         neatcontextual_paraformer=NeatContextualParaformer,
         mfcca=MFCCA,
         timestamp_prediction=TimestampPredictor,
@@ -1058,7 +1059,7 @@ class ASRTaskParaformer(ASRTask):
             model_class = model_choices.get_class(args.model)
         except AttributeError:
             model_class = model_choices.get_class("asr")
-        if model_class == SeACoParaformer:
+        if model_class == SeACoParaformer or model_class == SeACoParaformer_v4:
             decoder_class2 = decoder_choices2.get_class(args.decoder2)
             decoder2 = decoder_class2(
                 vocab_size=vocab_size,

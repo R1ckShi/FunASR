@@ -454,7 +454,7 @@ class SeACoParaformer(Paraformer): # decoder hotword augmented paraformer
             logging.warning("enable lstm bias decoder sampling and contextual training")
             self.bias_encoder = torch.nn.LSTM(self.inner_dim, 
                                               self.inner_dim, 
-                                              1, 
+                                              2, 
                                               batch_first=True, 
                                               dropout=bias_decoder_dropout,
                                               bidirectional=bias_bd_lstm)
@@ -646,6 +646,7 @@ class SeACoParaformer(Paraformer): # decoder hotword augmented paraformer
         if hw_list_pad is None:
             return decoder_pred, ys_pad_lens
         selected = self._hotword_representation(hw_list_pad, torch.Tensor(hw_lengths).int().to(encoder_out.device))
+        import pdb; pdb.set_trace()
         contextual_info = selected.squeeze(0).repeat(encoder_out.shape[0], 1, 1).to(encoder_out.device)
         num_hot_word = contextual_info.shape[1]
         _contextual_length = torch.Tensor([num_hot_word]).int().repeat(encoder_out.shape[0]).to(encoder_out.device)
@@ -681,3 +682,46 @@ class SeACoParaformer(Paraformer): # decoder hotword augmented paraformer
                 if j < len(decoder_pred[0]):
                     decoder_pred[0][j] = dha_output[0][j] * lmbd + decoder_pred[0][j] * (1 - lmbd)
         return decoder_pred, ys_pad_lens
+
+
+class SeACoParaformer_v4(SeACoParaformer):
+    def _unique_components(self):
+        # copy the parameter of base model's decoder embedding to sac_embedding before training
+        # and set sac_embedding trainable
+        self.sac_embedding = torch.nn.Embedding(self.vocab_size, self.inner_dim)
+    def _hotword_representation(self, 
+                                hotword_pad, 
+                                hotword_lengths, 
+                                hotword_phone_pad=None, 
+                                hotword_phone_lengths=None,
+                                phone_only=False):
+        if self.bias_decoder_type == 'lstm':
+            hw_embed = self.sac_embedding(hotword_pad)
+            hw_embed, (_, _) = self.bias_encoder(hw_embed)
+            if self.lstm_proj is not None:
+                hw_embed = self.lstm_proj(hw_embed)
+            _ind = np.arange(0, hw_embed.shape[0]).tolist()
+            selected = hw_embed[_ind, [i-1 for i in hotword_lengths.detach().cpu().tolist()]]
+            if hotword_phone_pad is not None:
+                hw_phone_embed = self.phone_embed(hotword_phone_pad)
+                hw_phone_embed, (_, _) = self.phone_lstm(hw_phone_embed)
+                _ind = np.arange(0, hw_phone_embed.shape[0]).tolist()
+                phone_selected = hw_phone_embed[_ind, [i-1 for i in hotword_phone_lengths.detach().cpu().tolist()]]
+                if phone_only:
+                    selected = phone_selected
+                else:
+                    selected += phone_selected
+        elif self.bias_decoder_type == 'attn':
+            # padding a blank token in the start
+            _pad = torch.zeros(hotword_pad.shape[0], 1).int().to(hotword_pad.device)
+            hotword_pad = torch.cat([_pad, hotword_pad], dim=1)
+            hw_embed = self.sac_embedding(hotword_pad)
+            mask = ~make_pad_mask(hotword_lengths+1, maxlen=hotword_pad.shape[1])[:, None, :].to(hotword_pad.device)
+            hotword_attn_res = self.bias_encoder(hw_embed, hw_embed, hw_embed, mask)[:, 0] # N*(L+1)*D
+            hotword_attn_linear = self.bias_encoder_linear(hotword_attn_res)
+            selected = self.bias_encoder_ln(hotword_attn_linear) # N*D
+        elif self.bias_decoder_type == 'mean':
+            mask = ~make_pad_mask(hotword_lengths, maxlen=hotword_pad.shape[1]).to(hotword_pad.device)
+            hw_embed = self.sac_embedding(hotword_pad)
+            selected = (hw_embed*mask.unsqueeze(-1)).sum(1)/hotword_lengths.unsqueeze(1)
+        return selected

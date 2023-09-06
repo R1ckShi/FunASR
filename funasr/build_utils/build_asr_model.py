@@ -366,7 +366,7 @@ def build_asr_model(args):
             predictor=predictor,
             **args.model_conf,
         )
-    elif args.model == "seaco_paraformer":
+    elif args.model == "seaco_paraformer" or args.model == 'seaco_paraformerv4':
         # predictor
         predictor_class = predictor_choices.get_class(args.predictor)
         predictor = predictor_class(**args.predictor_conf)
