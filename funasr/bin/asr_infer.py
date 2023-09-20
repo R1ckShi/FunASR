@@ -426,7 +426,6 @@ class Speech2TextParaformer:
         batch = {"speech": feats, "speech_lengths": feats_len}
 
         # a. To device
-        import pdb; pdb.set_trace()
         batch = to_device(batch, device=self.device)
 
         # b. Forward Encoder

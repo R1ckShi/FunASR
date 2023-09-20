@@ -14,7 +14,8 @@ from funasr.export.models.e2e_asr_contextual_paraformer import SeACoParaformer_e
 from funasr.export.models.e2e_asr_contextual_paraformer import SeACoParaformer_decoder as SeACoParaformer_decoder_export
 from funasr.export.models.e2e_asr_contextual_paraformer import SeACoParaformer_backbone as SeACoParaformer_backbone_export
 from funasr.export.models.e2e_asr_contextual_paraformer import SeACoParaformer_embedder as SeACoParaformer_embedder_export
-from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer, SeACoParaformer
+from funasr.models.e2e_asr_contextual_paraformer import NeatContextualParaformer
+from funasr.models.e2e_asr_contextual_paraformer import SeACoParaformer_v4 as SeACoParaformer
 
 
 def get_model(model, export_config=None):
