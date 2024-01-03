@@ -500,6 +500,7 @@ class SeACoParaformer_decoder(nn.Module):
         logits = decoder_out * dha_mask + dha_pred[:,:,:-1] * (1-dha_mask)
         sampled_ids = logits.argmax(-1)
         token_num += 1
+        
         return sampled_ids, logits, token_num-1
 
     def get_dummy_inputs(self):
