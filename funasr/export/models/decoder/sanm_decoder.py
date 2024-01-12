@@ -106,6 +106,32 @@ class ParaformerSANMDecoder(nn.Module):
             return x, ys_in_lens
         x = self.output_layer(x)
         return x, ys_in_lens
+    
+    def forward(
+        self,
+        hs_pad: torch.Tensor,
+        hlens: torch.Tensor,
+        ys_in_pad: torch.Tensor,
+        ys_in_lens: torch.Tensor,
+    ):
+
+        tgt = ys_in_pad
+        tgt_mask = self.make_pad_mask(ys_in_lens)
+        tgt_mask, _ = self.prepare_mask(tgt_mask)
+        # tgt_mask = myutils.sequence_mask(ys_in_lens, device=tgt.device)[:, :, None]
+
+        memory = hs_pad
+        memory_mask = self.make_pad_mask(hlens)
+        _, memory_mask = self.prepare_mask(memory_mask)
+        # memory_mask = myutils.sequence_mask(hlens, device=memory.device)[:, None, :]
+
+        # x = tgt
+        # x, tgt_mask, memory, memory_mask, _ = self.model.decoders(
+        #     x, tgt_mask, memory, memory_mask
+        # )
+        x, tgt_mask, memory, memory_mask, _ = self.model.decoders[0](x, tgt_mask, memory, memory_mask)
+        x, tgt_mask, memory, memory_mask, _ = self.model.decoders[1](x, tgt_mask, memory, memory_mask)
+        return 1
 
 
     def get_dummy_inputs(self, enc_size):
