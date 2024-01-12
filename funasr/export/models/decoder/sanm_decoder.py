@@ -107,7 +107,7 @@ class ParaformerSANMDecoder(nn.Module):
         x = self.output_layer(x)
         return x, ys_in_lens
     
-    def forward(
+    def forward_asf(
         self,
         hs_pad: torch.Tensor,
         hlens: torch.Tensor,
