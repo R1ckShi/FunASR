@@ -129,8 +129,8 @@ class ParaformerSANMDecoder(nn.Module):
         # x, tgt_mask, memory, memory_mask, _ = self.model.decoders(
         #     x, tgt_mask, memory, memory_mask
         # )
-        x, tgt_mask, memory, memory_mask, _ = self.model.decoders[0](x, tgt_mask, memory, memory_mask)
-        x, tgt_mask, memory, memory_mask, _ = self.model.decoders[1](x, tgt_mask, memory, memory_mask)
+        tgt, tgt_mask, memory, memory_mask, _ = self.model.decoders[0](tgt, tgt_mask, memory, memory_mask)
+        tgt, tgt_mask, memory, memory_mask, _ = self.model.decoders[1](tgt, tgt_mask, memory, memory_mask)
         return 1
 
 
