@@ -2,8 +2,8 @@
 from funasr_onnx import SeACoParaformer2 as SeACoParaformer
 from pathlib import Path
 
-model_dir = "/Users/shixian/code/speech_seaco_paraformer4"
-model = SeACoParaformer(model_dir, batch_size=1)
+model_dir = "/Users/shixian/Downloads/seaco_model"
+model = SeACoParaformer(model_dir, batch_size=1, quantize=True)
 # model = Paraformer(model_dir, batch_size=1, device_id=0)  # gpu
 
 # when using paraformer-large-vad-punc model, you can set plot_timestamp_to="./xx.png" to get figure of alignment besides timestamps

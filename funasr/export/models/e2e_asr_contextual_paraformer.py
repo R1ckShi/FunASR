@@ -475,17 +475,13 @@ class SeACoParaformer_decoder(nn.Module):
         decoder_out, decoder_hidden, _ = self.decoder(encoder_output, encoder_output_lengths, cif_output, token_num, return_hidden=True, return_both=True)
         decoder_out = torch.log_softmax(decoder_out, dim=-1)
         # sac forward
-        for dec in self.decoder2.model.decoders:
-            dec.reserve_attn = True
-        _ = self.decoder2.forward_asf(bias_embed, bias_length, decoder_hidden, token_num)
-        hotword_scores = self.decoder2.model.decoders[1].attn_mat[0][0].sum(0).sum(0)
+        hotword_scores = self.decoder2.forward_asf2(bias_embed, bias_length, decoder_hidden, token_num)
+        hotword_scores = hotword_scores[0][0].sum(0).sum(0)
         dec_filter = torch.sort(hotword_scores, descending=True)[1][:51]
         contextual_info = bias_embed[:,dec_filter]
         num_hot_word = contextual_info.shape[1]
         _contextual_length = torch.Tensor([num_hot_word]).int().repeat(encoder_output.shape[0]).to(encoder_output.device)
-        for dec in self.decoder2.model.decoders:
-            dec.attn_mat = []
-            dec.reserve_attn = False
+        
         cif_attended, _ = self.decoder2(contextual_info, _contextual_length, cif_output, token_num)
         dec_attended, _ = self.decoder2(contextual_info, _contextual_length, decoder_hidden, token_num)
         merged = cif_attended + dec_attended

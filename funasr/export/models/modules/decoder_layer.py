@@ -20,7 +20,6 @@ class DecoderLayerSANM(nn.Module):
         self.norm3 = model.norm3 if hasattr(model, 'norm3') else None
         self.size = model.size
         self.reserve_attn = False
-        self.attn_mat = []
 
 
     def forward(self, tgt, tgt_mask, memory, memory_mask=None, cache=None):
@@ -48,6 +47,22 @@ class DecoderLayerSANM(nn.Module):
 
 
         return x, tgt_mask, memory, memory_mask, cache
+
+    def get_attn_mat(self, tgt, tgt_mask, memory, memory_mask=None, cache=None):
+        residual = tgt
+        tgt = self.norm1(tgt)
+        tgt = self.feed_forward(tgt)
+
+        x = tgt
+        if self.self_attn is not None:
+            tgt = self.norm2(tgt)
+            x, cache = self.self_attn(tgt, tgt_mask, cache=cache)
+            x = residual + x
+
+        residual = x
+        x = self.norm3(x)
+        x_src_attn, attn_mat = self.src_attn(x, memory, memory_mask, ret_attn=True)
+        return attn_mat
 
 
 class DecoderLayer(nn.Module):
