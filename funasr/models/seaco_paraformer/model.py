@@ -208,20 +208,20 @@ class SeacoParaformer(BiCifParaformer, Paraformer):
         decoder_out, _ = self.decoder(
             encoder_out, encoder_out_lens, pre_acoustic_embeds, ys_lengths, return_hidden=True
         )
-        selected = self._hotword_representation(hotword_pad, hotword_lengths)
-        contextual_info = (
-            selected.squeeze(0).repeat(encoder_out.shape[0], 1, 1).to(encoder_out.device)
+        hotword_vec = self._hotword_representation(hotword_pad, hotword_lengths)
+        hotword_vec = (
+            hotword_vec.squeeze(0).repeat(encoder_out.shape[0], 1, 1).to(encoder_out.device)
         )
-        num_hot_word = contextual_info.shape[1]
-        _contextual_length = (
+        num_hot_word = hotword_vec.shape[1]
+        hotword_vec_lengths = (
             torch.Tensor([num_hot_word]).int().repeat(encoder_out.shape[0]).to(encoder_out.device)
         )
         # dha core
         cif_attended, _ = self.seaco_decoder(
-            contextual_info, _contextual_length, pre_acoustic_embeds, ys_lengths
+            hotword_vec, hotword_vec_lengths, pre_acoustic_embeds, ys_lengths
         )
         dec_attended, _ = self.seaco_decoder(
-            contextual_info, _contextual_length, decoder_out, ys_lengths
+            hotword_vec, hotword_vec_lengths, decoder_out, ys_lengths
         )
         merged = self._merge(cif_attended, dec_attended)
         dha_output = self.hotword_output_layer(
@@ -240,8 +240,7 @@ class SeacoParaformer(BiCifParaformer, Paraformer):
         nfilter=50,
         seaco_weight=1.0,
     ):
-        # decoder forward
-
+        # ASR decoder forward
         decoder_out, decoder_hidden, _ = self.decoder(
             encoder_out,
             encoder_out_lens,
@@ -250,21 +249,20 @@ class SeacoParaformer(BiCifParaformer, Paraformer):
             return_hidden=True,
             return_both=True,
         )
-
         decoder_pred = torch.log_softmax(decoder_out, dim=-1)
         if hw_list is not None:
             hw_lengths = [len(i) for i in hw_list]
             hw_list_ = [torch.Tensor(i).long() for i in hw_list]
             hw_list_pad = pad_list(hw_list_, 0).to(encoder_out.device)
-            selected = self._hotword_representation(
+            hotword_vec = self._hotword_representation(
                 hw_list_pad, torch.Tensor(hw_lengths).int().to(encoder_out.device)
             )
 
-            contextual_info = (
-                selected.squeeze(0).repeat(encoder_out.shape[0], 1, 1).to(encoder_out.device)
+            hotword_vec = (
+                hotword_vec.squeeze(0).repeat(encoder_out.shape[0], 1, 1).to(encoder_out.device)
             )
-            num_hot_word = contextual_info.shape[1]
-            _contextual_length = (
+            num_hot_word = hotword_vec.shape[1]
+            hotword_vec_lengths = (
                 torch.Tensor([num_hot_word])
                 .int()
                 .repeat(encoder_out.shape[0])
@@ -273,22 +271,23 @@ class SeacoParaformer(BiCifParaformer, Paraformer):
 
             # ASF Core
             if nfilter > 0 and nfilter < num_hot_word:
-                hotword_scores = self.seaco_decoder.forward_asf6(
-                    contextual_info, _contextual_length, decoder_hidden, ys_pad_lens
+                hotword_scores = self.seaco_decoder.forward_asf(
+                    hotword_vec, hotword_vec_lengths, decoder_hidden, ys_pad_lens
                 )
-                hotword_scores = hotword_scores[0].sum(0).sum(0)
-                # hotword_scores /= torch.sqrt(torch.tensor(hw_lengths)[:-1].float()).to(hotword_scores.device)
-                dec_filter = torch.topk(hotword_scores, min(nfilter, num_hot_word - 1))[1].tolist()
-                add_filter = dec_filter
-                add_filter.append(len(hw_list_pad) - 1)
+                ##################################################################
+                ######## get the top K hotwords with the largest score ###########
+                ##################### return hotword_index #######################
+                ##################################################################
+                # don't forget the default hotword
+                hotword_index.append(len(hw_list_pad) - 1)
                 # filter hotword embedding
-                selected = selected[add_filter]
+                hotword_vec = hotword_vec[hotword_index]
                 # again
-                contextual_info = (
-                    selected.squeeze(0).repeat(encoder_out.shape[0], 1, 1).to(encoder_out.device)
+                hotword_vec = (
+                    hotword_vec.squeeze(0).repeat(encoder_out.shape[0], 1, 1).to(encoder_out.device)
                 )
-                num_hot_word = contextual_info.shape[1]
-                _contextual_length = (
+                num_hot_word = hotword_vec.shape[1]
+                hotword_vec_lengths = (
                     torch.Tensor([num_hot_word])
                     .int()
                     .repeat(encoder_out.shape[0])
@@ -297,10 +296,10 @@ class SeacoParaformer(BiCifParaformer, Paraformer):
 
             # SeACo Core
             cif_attended, _ = self.seaco_decoder(
-                contextual_info, _contextual_length, sematic_embeds, ys_pad_lens
+                hotword_vec, hotword_vec_lengths, sematic_embeds, ys_pad_lens
             )
             dec_attended, _ = self.seaco_decoder(
-                contextual_info, _contextual_length, decoder_hidden, ys_pad_lens
+                hotword_vec, hotword_vec_lengths, decoder_hidden, ys_pad_lens
             )
             merged = self._merge(cif_attended, dec_attended)
 
@@ -336,8 +335,8 @@ class SeacoParaformer(BiCifParaformer, Paraformer):
         if self.lstm_proj is not None:
             hw_embed = self.lstm_proj(hw_embed)
         _ind = np.arange(0, hw_embed.shape[0]).tolist()
-        selected = hw_embed[_ind, [i-1 for i in hotword_lengths.detach().cpu().tolist()]]
-        return selected
+        hotword_vec = hw_embed[_ind, [i-1 for i in hotword_lengths.detach().cpu().tolist()]]
+        return hotword_vec
         """
 
         # hw_embed = self.sac_embedding(hotword_pad)
@@ -355,8 +354,8 @@ class SeacoParaformer(BiCifParaformer, Paraformer):
         else:
             hw_hidden = rnn_output
         _ind = np.arange(0, hw_hidden.shape[0]).tolist()
-        selected = hw_hidden[_ind, [i - 1 for i in hotword_lengths.detach().cpu().tolist()]]
-        return selected
+        hotword_vec = hw_hidden[_ind, [i - 1 for i in hotword_lengths.detach().cpu().tolist()]]
+        return hotword_vec
 
     def inference(
         self,

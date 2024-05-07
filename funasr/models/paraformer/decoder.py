@@ -418,45 +418,23 @@ class ParaformerSANMDecoder(BaseTransformerDecoder):
         logp, state = self.forward_one_step(ys.unsqueeze(0), ys_mask, x.unsqueeze(0), cache=state)
         return logp.squeeze(0), state
 
-    def forward_asf2(
+    def forward_asf(
         self,
         hs_pad: torch.Tensor,
         hlens: torch.Tensor,
         ys_in_pad: torch.Tensor,
         ys_in_lens: torch.Tensor,
     ):
-
         tgt = ys_in_pad
         tgt_mask = myutils.sequence_mask(ys_in_lens, device=tgt.device)[:, :, None]
 
         memory = hs_pad
         memory_mask = myutils.sequence_mask(hlens, device=memory.device)[:, None, :]
 
-        tgt, tgt_mask, memory, memory_mask, _ = self.decoders[0](tgt, tgt_mask, memory, memory_mask)
-        attn_mat = self.model.decoders[1].get_attn_mat(tgt, tgt_mask, memory, memory_mask)
-        return attn_mat
-
-    def forward_asf6(
-        self,
-        hs_pad: torch.Tensor,
-        hlens: torch.Tensor,
-        ys_in_pad: torch.Tensor,
-        ys_in_lens: torch.Tensor,
-    ):
-
-        tgt = ys_in_pad
-        tgt_mask = myutils.sequence_mask(ys_in_lens, device=tgt.device)[:, :, None]
-
-        memory = hs_pad
-        memory_mask = myutils.sequence_mask(hlens, device=memory.device)[:, None, :]
-
-        tgt, tgt_mask, memory, memory_mask, _ = self.decoders[0](tgt, tgt_mask, memory, memory_mask)
-        tgt, tgt_mask, memory, memory_mask, _ = self.decoders[1](tgt, tgt_mask, memory, memory_mask)
-        tgt, tgt_mask, memory, memory_mask, _ = self.decoders[2](tgt, tgt_mask, memory, memory_mask)
-        tgt, tgt_mask, memory, memory_mask, _ = self.decoders[3](tgt, tgt_mask, memory, memory_mask)
-        tgt, tgt_mask, memory, memory_mask, _ = self.decoders[4](tgt, tgt_mask, memory, memory_mask)
-        attn_mat = self.decoders[5].get_attn_mat(tgt, tgt_mask, memory, memory_mask)
-        return attn_mat
+        ############################################################################
+        ############ get attention score matirx from self.decoders #################
+        ############################################################################
+        # return attn_mat
 
     def forward_chunk(
         self,

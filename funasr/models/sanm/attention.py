@@ -688,7 +688,10 @@ class MultiHeadedAttentionCrossAtt(nn.Module):
             x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)
         )  # (batch, time1, d_model)
         if ret_attn:
-            return self.linear_out(x), self.attn  # (batch, time1, d_model)
+            ##################################################################
+            ######### which one is the matrix you need? check it out! ########
+            ##################################################################
+            # return self.linear_out(context_layer), xxx
         return self.linear_out(x)  # (batch, time1, d_model)
 
     def forward(self, x, memory, memory_mask, ret_attn=False):
@@ -783,7 +786,10 @@ class MultiHeadedAttentionCrossAttExport(nn.Module):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(new_context_layer_shape)
         if ret_attn:
-            return self.linear_out(context_layer), self.attn
+            ##################################################################
+            ######### which one is the matrix you need? check it out! ########
+            ##################################################################
+            # return self.linear_out(context_layer), xxx
         return self.linear_out(context_layer)  # (batch, time1, d_model)
 
 
